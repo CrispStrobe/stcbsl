@@ -99,4 +99,8 @@ impl Wire for SerialWire {
     fn flush(&mut self) -> std::io::Result<()> {
         Write::flush(&mut self.port)
     }
+
+    fn baud(&self) -> u32 {
+        self.baud
+    }
 }

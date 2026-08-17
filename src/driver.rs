@@ -29,6 +29,26 @@ pub trait Wire {
     /// Change the line rate without closing the port.
     fn set_baud(&mut self, baud: u32) -> io::Result<()>;
     fn flush(&mut self) -> io::Result<()>;
+    /// The line rate currently configured — used to compute how long the
+    /// frame just written needs on the wire before a retune is safe.
+    fn baud(&self) -> u32;
+}
+
+/// Milliseconds a frame of `n` bytes needs on the wire at `baud`, at 8N1
+/// (10 bit-times per byte), rounded up, plus a fixed margin for the
+/// USB-serial adapter's own latency. `set_baud` reconfigures the UART the
+/// instant it is called; if the frame has not physically drained, its tail
+/// goes out at the new rate and the chip never sees a valid frame — which
+/// is exactly why the 0x8F probe got no echo until this wait existed
+/// (CH340/macOS, silicon 2026-08-18: `flush()`/tcdrain did not guarantee
+/// the wire was empty). Deterministic and portable — no reliance on the OS
+/// draining on our behalf.
+fn wire_drain_ms(n: usize, baud: u32) -> u64 {
+    const MARGIN_MS: u64 = 10;
+    if baud == 0 {
+        return MARGIN_MS;
+    }
+    (n as u64 * 10 * 1000).div_ceil(baud as u64) + MARGIN_MS
 }
 
 /// Progress reporting, so the CLI's chattiness is not baked into the driver.
@@ -185,10 +205,20 @@ pub fn run<W: Wire, L: Log>(
                 // The chip switched rate on receiving this frame (the 0x8F
                 // probe) and its echo comes back at the new baud — retune
                 // between the write and the read, or the reply times out at
-                // the old rate (silicon, 2026-08-18). Anything in flight
-                // across the change is garbage; the Receiver resyncs on 46 B9.
+                // the old rate (silicon, 2026-08-18). But the frame must
+                // FULLY LEAVE THE WIRE first: set_baud reconfigures the UART
+                // immediately, and if the frame's tail is still queued it
+                // goes out at the new rate and the chip sees garbage (the
+                // probe got no echo at ANY rate until this wait existed).
+                // flush() alone did not guarantee it on CH340/macOS, so we
+                // sleep the frame's computed wire time at the OLD baud.
                 if let Some(baud) = retune_after_send {
-                    log.note(&format!("retuning the link to {baud} baud before the reply"));
+                    let drain = wire_drain_ms(bytes.len(), wire.baud());
+                    log.note(&format!(
+                        "draining {} bytes (~{drain} ms) then retuning to {baud} baud before the reply",
+                        bytes.len()
+                    ));
+                    std::thread::sleep(Duration::from_millis(drain));
                     wire.set_baud(baud).map_err(|e| wrap(session, Error::Io(e)))?;
                     rx = Receiver::new();
                 }
@@ -243,5 +273,33 @@ fn wrap(session: &Session, e: Error) -> Error {
         Error::IndeterminateFlash(Box::new(e))
     } else {
         e
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::wire_drain_ms;
+
+    // The 0x8F probe is a 14-byte frame. At the 2400 handshake baud it needs
+    // ~58 ms on the wire (14 × 10 / 2400 = 58.3 ms) — the exact figure the
+    // bench measured — plus the 10 ms adapter margin. Retuning before this
+    // elapses truncated the frame and the chip never echoed (silicon fix,
+    // 2026-08-18).
+    #[test]
+    fn probe_frame_wire_time_at_handshake_baud() {
+        assert_eq!(wire_drain_ms(14, 2400), 59 + 10); // ceil(58.33) + margin
+    }
+
+    // At the transfer baud the same frame is ~1 ms, so the margin dominates —
+    // still safe, never harmful.
+    #[test]
+    fn fast_baud_is_margin_bound() {
+        assert_eq!(wire_drain_ms(14, 115200), 2 + 10); // ceil(1.22) + margin
+    }
+
+    // A zero baud (never reached in practice) must not divide by zero.
+    #[test]
+    fn zero_baud_is_margin_only() {
+        assert_eq!(wire_drain_ms(14, 0), 10);
     }
 }
