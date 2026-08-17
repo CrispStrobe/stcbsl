@@ -1,0 +1,26 @@
+[package]
+name = "stcbsl"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.74"
+license = "MIT"
+description = "Clean-room STC serial bootloader (ISP) flasher — STC89 protocol family"
+repository = "https://github.com/CrispStrobe/stc12c5a60s2-lab"
+authors = ["CrispStrobe <cze+github@mailbox.org>"]
+publish = false
+
+[features]
+# The pure protocol/codec layer has no dependencies at all; `cargo test
+# --no-default-features` exercises everything the replay tests cover, offline.
+default = ["serial"]
+serial = ["dep:serialport"]
+
+[dependencies]
+serialport = { version = "4.9", optional = true }
+
+[[bin]]
+name = "stcbsl"
+path = "src/bin/stcbsl.rs"
+
+[profile.release]
+opt-level = 2

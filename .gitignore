@@ -1,0 +1,4 @@
+# Build output. `Cargo.lock` is deliberately NOT ignored: this crate produces
+# a binary that flashes hardware, so the exact dependency set that was tested
+# is part of the deliverable.
+/target
