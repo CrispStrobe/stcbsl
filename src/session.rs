@@ -76,10 +76,19 @@ pub struct Step {
     pub expect: Expect,
     pub timeout_ms: u64,
     /// Retune the link to this baud once this step's reply has been accepted.
-    /// Set on the `0x8E` commit only: both ends change rate in place, on the
-    /// open port, with nothing to resynchronise on afterwards but the `46 B9`
-    /// preamble (§3.4).
+    /// In place, on the open port, resynchronising on the `46 B9` preamble
+    /// (§3.4).
     pub retune_to: Option<u32>,
+    /// Retune the link to this baud after SENDING this step's frame but
+    /// BEFORE reading its reply. Set on the `0x8F` probe: the chip switches
+    /// rate the instant it receives `0x8F` and answers at the NEW baud —
+    /// "checking" IS the check that the new rate works — so the host must
+    /// already be listening there. Verified on silicon 2026-08-18: with the
+    /// retune deferred to after the `0x8E` commit, the `0x8F` reply timed
+    /// out at 2400 because it had arrived at 115200 (stcbsl acceptance run,
+    /// stc-e1's bench; the byte frame was identical to
+    /// 03-flash-blink-run1.log, only the read baud was wrong).
+    pub retune_before_read: Option<u32>,
     /// Byte offset this step programs, for error reporting.
     pub write_addr: Option<u32>,
 }
@@ -94,6 +103,11 @@ pub enum Action {
         bytes: Vec<u8>,
         expect_reply: bool,
         timeout_ms: u64,
+        /// Retune the port to this baud AFTER writing `bytes` but BEFORE
+        /// reading the reply — the chip has already switched (the `0x8F`
+        /// probe). Applied in the same breath as the send so the coupled
+        /// send-then-read stays coupled; `None` for every other step.
+        retune_after_send: Option<u32>,
     },
     /// Change the port's baud rate in place — do **not** close and reopen:
     /// `docs/BENCH-FLASHING.md` records that a close/reopen loses bytes
@@ -201,6 +215,10 @@ impl Session {
             bytes: step.frame.encode(),
             expect_reply,
             timeout_ms: step.timeout_ms,
+            // A step that retunes before its reply must carry the baud on the
+            // send: the caller writes, retunes, then reads — one arm, so a
+            // separate SetBaud action would never land between them.
+            retune_after_send: if expect_reply { step.retune_before_read } else { None },
         };
         if expect_reply {
             self.awaiting = true;

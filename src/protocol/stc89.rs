@@ -325,6 +325,12 @@ impl ProtocolFamily for Stc89 {
             expect: Expect::Echo,
             timeout_ms: opts.reply_timeout_ms,
             retune_to: None,
+            // The chip switches rate on RECEIVING 0x8F and echoes at the new
+            // baud ("checking" = does the new rate work), so the host retunes
+            // after sending the probe, before reading its echo. Verified on
+            // silicon 2026-08-18; the earlier after-commit model timed out
+            // reading the 0x8F echo at the old baud.
+            retune_before_read: Some(opts.transfer_baud),
             write_addr: None,
         });
         steps.push(Step {
@@ -333,8 +339,10 @@ impl ProtocolFamily for Stc89 {
             frame: Stc89::baud_commit_frame(reload),
             expect: Expect::Echo,
             timeout_ms: opts.reply_timeout_ms,
-            // Both ends retune after this exchange, in place (§3.4).
-            retune_to: Some(opts.transfer_baud),
+            // Already at the new baud by now (the probe retuned us); the
+            // commit and its echo both happen there.
+            retune_to: None,
+            retune_before_read: None,
             write_addr: None,
         });
 
@@ -350,6 +358,7 @@ impl ProtocolFamily for Stc89 {
                 },
                 timeout_ms: opts.reply_timeout_ms,
                 retune_to: None,
+                retune_before_read: None,
                 write_addr: None,
             });
         }
@@ -391,6 +400,7 @@ impl ProtocolFamily for Stc89 {
             expect: Expect::AckLen { cmd: REPLY_ACK, payload_len: ERASE_REPLY_LEN },
             timeout_ms: opts.erase_timeout_ms,
             retune_to: None,
+            retune_before_read: None,
             write_addr: None,
         });
 
@@ -418,6 +428,7 @@ impl ProtocolFamily for Stc89 {
                     expect: Expect::BlockAck { sum: Stc89::block_ack(chunk) },
                     timeout_ms: opts.reply_timeout_ms,
                     retune_to: None,
+                    retune_before_read: None,
                     write_addr: Some(addr),
                 });
             }
@@ -432,6 +443,7 @@ impl ProtocolFamily for Stc89 {
                     expect: Expect::Echo,
                     timeout_ms: opts.reply_timeout_ms,
                     retune_to: None,
+                    retune_before_read: None,
                     write_addr: None,
                 });
             }
@@ -452,6 +464,7 @@ fn run_step(opts: &SessionOptions) -> Step {
         expect: Expect::Nothing,
         timeout_ms: opts.reply_timeout_ms,
         retune_to: None,
+        retune_before_read: None,
         write_addr: None,
     }
 }

@@ -178,10 +178,20 @@ pub fn run<W: Wire, L: Log>(
                 // 46 B9 (§3.4), which the Receiver already does.
                 rx = Receiver::new();
             }
-            Action::Send { label, bytes, expect_reply, timeout_ms, .. } => {
+            Action::Send { label, bytes, expect_reply, timeout_ms, retune_after_send, .. } => {
                 log.step(&label, &bytes);
                 wire.write_all(&bytes).map_err(|e| wrap(session, Error::Io(e)))?;
                 wire.flush().map_err(|e| wrap(session, Error::Io(e)))?;
+                // The chip switched rate on receiving this frame (the 0x8F
+                // probe) and its echo comes back at the new baud — retune
+                // between the write and the read, or the reply times out at
+                // the old rate (silicon, 2026-08-18). Anything in flight
+                // across the change is garbage; the Receiver resyncs on 46 B9.
+                if let Some(baud) = retune_after_send {
+                    log.note(&format!("retuning the link to {baud} baud before the reply"));
+                    wire.set_baud(baud).map_err(|e| wrap(session, Error::Io(e)))?;
+                    rx = Receiver::new();
+                }
                 if !expect_reply {
                     continue;
                 }
