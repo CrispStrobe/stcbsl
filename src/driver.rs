@@ -235,6 +235,36 @@ pub fn run<W: Wire, L: Log>(
                 rx = Receiver::new();
             }
             Action::Send { label, bytes, expect_reply, timeout_ms, .. } => {
+                // Bench experiment (env-gated, inert otherwise): a quiet gap
+                // before the 0x8F probe. stcgal (Python) leaves ~68 ms between
+                // the status packet and its probe; this Rust host fires in ~1 ms,
+                // and the silicon answers stcgal but not us — the BSL may need
+                // turnaround time after its 57-byte status TX. Measured proof or
+                // refutation decides whether this becomes a real parameter.
+                if label.contains("baud probe") {
+                    // Bench experiment 2: stcgal's pulse timer keeps emitting
+                    // 0x7F for ~2 pulses AFTER the status packet (pty log,
+                    // 175.7 + 206.1 ms) — possibly the BSL's required "you
+                    // heard me" ack before it accepts commands.
+                    if let Ok(n) = std::env::var("STCBSL_POST_STATUS_PULSES") {
+                        if let Ok(n) = n.parse::<u32>() {
+                            for _ in 0..n {
+                                let _ = wire.write_all(&[0x7F]);
+                                let _ = wire.flush();
+                                std::thread::sleep(Duration::from_millis(30));
+                            }
+                            log.note(&format!(
+                                "bench experiment: {n} post-status 0x7F pulse(s) sent"));
+                        }
+                    }
+                    if let Ok(ms) = std::env::var("STCBSL_PROBE_DELAY_MS") {
+                        if let Ok(ms) = ms.parse::<u64>() {
+                            std::thread::sleep(Duration::from_millis(ms));
+                            log.note(&format!(
+                                "bench experiment: {ms} ms quiet gap before the probe"));
+                        }
+                    }
+                }
                 log.step(&label, &bytes);
                 wire.write_all(&bytes).map_err(|e| wrap(session, Error::Io(e)))?;
                 wire.flush().map_err(|e| wrap(session, Error::Io(e)))?;
