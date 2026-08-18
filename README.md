@@ -7,11 +7,18 @@ about itself, erase its code flash, and program an Intel HEX image into it.
 
 **MIT.** Our own work, written from a specification of protocol facts and from
 byte-exact captures of this lab's own bench sessions against this lab's own
-silicon — not ported, translated, or transcribed from any existing tool. The
-provenance section below is not boilerplate: it is the point of the exercise,
-and it lists the refusals as carefully as the sources.
+silicon — an independent implementation, not a port.
 
-**Status: verified against nine captured sessions, never yet run on silicon.**
+> **Note (2026-08-18):** this crate was written clean-room, without reading
+> stcgal, on the belief that stcgal was GPL. **stcgal is in fact MIT**
+> (README + `setup.py` classifier + per-file headers), so the clean-room
+> separation was never a licensing requirement — MIT and MIT are
+> compatible. The crate remains an independent MIT implementation; the
+> independence is now simply how it was built, not a legal necessity, and
+> stcgal is a fair reference for any future work here.
+
+**Status: silicon acceptance in progress** — programmed a real STC89C52RC at
+2400 baud (owner-watched); the 115200 path is being brought up on the bench.
 That is the same bar every other claim in this repo is held to, stated the same
 way. `cargo test` proves the crate reproduces every byte a real successful
 session put on the wire; it does not prove a chip will accept them from *this*
