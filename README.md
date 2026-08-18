@@ -17,8 +17,14 @@ silicon — an independent implementation, not a port.
 > independence is now simply how it was built, not a legal necessity, and
 > stcgal is a fair reference for any future work here.
 
-**Status: silicon acceptance in progress** — programmed a real STC89C52RC at
-2400 baud (owner-watched); the 115200 path is being brought up on the bench.
+**Status: silicon-verified at full speed.** Flashed a real STC89C52RC end to
+end at 115200 baud — handshake, baud switch, erase, per-block program with
+checksum acks, options, release — and the programmed firmware ran
+(owner-watched, 2026-08-18). Proven on the same silicon as stcgal within the
+same hour. Five real bugs were found and fixed on the bench that night — the
+baud-switch dance, the macOS `IOSSIOSPEED` requirement, a sync-pulse barrage,
+a handshake latch, and a 100 ms drain-to-switch settle — the last closed by a
+line-by-line diff against stcgal's (MIT) source.
 That is the same bar every other claim in this repo is held to, stated the same
 way. `cargo test` proves the crate reproduces every byte a real successful
 session put on the wire; it does not prove a chip will accept them from *this*
