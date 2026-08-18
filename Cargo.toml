@@ -29,3 +29,7 @@ path = "src/bin/stcbsl.rs"
 
 [profile.release]
 opt-level = 2
+
+[[bin]]
+name = "rxprobe"
+required-features = ["serial"]
