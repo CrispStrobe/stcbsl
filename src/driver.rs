@@ -160,12 +160,23 @@ pub fn handshake<W: Wire, F: ProtocolFamily, L: Log>(
     let mut buf = [0u8; 256];
     let started = Instant::now();
     let mut noise = 0usize;
-
+    // Stop pulsing 0x7F the instant the chip starts talking. The BSL replies
+    // only once it has synced to our pulses, so the first byte we hear IS its
+    // answer beginning; keep pulsing and the loop's fast partial reads bury
+    // the ~237 ms status packet under a fresh sync barrage (~20-40 strays at
+    // 2400), which a BSL reads as a new sync attempt and drops back out of
+    // command mode — the probe is then ignored forever (stc-e1's chip-side
+    // audit, 2026-08-18; stcgal's timer emits exactly two in-flight strays
+    // post-status, then silence). One byte in = pulses off, read to the frame.
+    let mut heard = false;
     while started.elapsed() < wait {
-        wire.write_all(&[SYNC_BYTE])?;
-        wire.flush()?;
+        if !heard {
+            wire.write_all(&[SYNC_BYTE])?;
+            wire.flush()?;
+        }
         let n = wire.read(&mut buf)?;
         if n > 0 {
+            heard = true;
             rx.feed(&buf[..n]);
         }
         while let Some(result) = rx.next_frame() {
