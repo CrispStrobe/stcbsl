@@ -5,17 +5,8 @@ A Rust implementation of the **STC serial ISP protocol**: handshake with the
 bootloader in an STC MCU over a plain USB-TTL adapter, read what the chip says
 about itself, erase its code flash, and program an Intel HEX image into it.
 
-**MIT.** Our own work, written from a specification of protocol facts and from
-byte-exact captures of this lab's own bench sessions against this lab's own
-silicon — an independent implementation, not a port.
-
-> **Note (2026-08-18):** this crate was written clean-room, without reading
-> stcgal, on the belief that stcgal was GPL. **stcgal is in fact MIT**
-> (README + `setup.py` classifier + per-file headers), so the clean-room
-> separation was never a licensing requirement — MIT and MIT are
-> compatible. The crate remains an independent MIT implementation; the
-> independence is now simply how it was built, not a legal necessity, and
-> stcgal is a fair reference for any future work here.
+**MIT.** Written from a specification of protocol facts and from
+byte-exact captures of bench sessions against silicon.
 
 **Status: silicon-verified at full speed.** Flashed a real STC89C52RC end to
 end at 115200 baud — handshake, baud switch, erase, per-block program with
