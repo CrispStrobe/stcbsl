@@ -345,14 +345,12 @@ fn replay(name: &str, job: Job) -> Outcome {
             continue;
         }
         // A host frame: whatever we would send next must equal it exactly.
-        let mut retune_on_send = None;
+        // The SetBaud lands here (after the 0x8E commit's echo, before the
+        // first 0x80), recorded at the count of host frames sent so far.
         let bytes = loop {
             match session.next_action() {
                 Action::SetBaud(b) => out.retunes.push((out.host_frames_matched, b)),
-                Action::Send { bytes, retune_after_send, .. } => {
-                    retune_on_send = retune_after_send;
-                    break Some(bytes);
-                }
+                Action::Send { bytes, .. } => break Some(bytes),
                 Action::AwaitingReply => {
                     // The capture moved on without giving us the reply the
                     // plan is waiting for: the aborted session.
@@ -374,12 +372,6 @@ fn replay(name: &str, job: Job) -> Outcome {
             r.phase
         );
         out.host_frames_matched += 1;
-        // A frame that retunes before its own reply (the 0x8F probe) — record
-        // it as happening AT that frame, so the reply we read next is at the
-        // new baud, exactly as the chip sent it.
-        if let Some(b) = retune_on_send {
-            out.retunes.push((out.host_frames_matched, b));
-        }
     }
     out.session = session;
     out
@@ -416,11 +408,11 @@ fn replay_erase_sessions() {
         assert_eq!(out.host_frames_matched, 8, "{name}");
         assert_eq!(out.mcu_replies_accepted, 7, "{name}: everything but 0x82");
         assert!(out.session.is_finished(), "{name}");
-        // §5.3: the retune happens AT the 0x8F probe (host frame 1) — the
-        // chip answers the probe at the new baud, so the host is already
-        // there for the reply. (Silicon 2026-08-18 corrected the earlier
-        // after-0x8E model, which read the probe echo at the old rate.)
-        assert_eq!(out.retunes, vec![(1, 115200)], "{name}");
+        // §5.3: both the 0x8F probe and the 0x8E commit are sent and echoed
+        // at the handshake baud; the retune lands AFTER them (host frames 1
+        // and 2), before the first 0x80 link test — the proven stcgal
+        // sequence observed against a pty replay (2026-08-18).
+        assert_eq!(out.retunes, vec![(2, 115200)], "{name}");
         assert!(!out.session.flash_is_indeterminate());
     }
 }
@@ -441,7 +433,7 @@ fn replay_flash_sessions() {
         assert_eq!(out.host_frames_matched, 9 + blocks, "{name}");
         // everything but 0x82 is answered
         assert_eq!(out.mcu_replies_accepted, 8 + blocks, "{name}");
-        assert_eq!(out.retunes, vec![(1, 115200)], "{name}");
+        assert_eq!(out.retunes, vec![(2, 115200)], "{name}");
         assert!(out.session.is_finished(), "{name}");
         assert!(!out.session.flash_is_indeterminate(), "{name}");
     }

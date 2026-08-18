@@ -41,26 +41,26 @@ pub trait Wire {
     }
 }
 
-/// How the driver waits for a frame to clear the wire before a pre-reply
-/// retune (the `0x8F` probe). The window is narrow: retune before the frame
-/// has drained and its tail goes out at the new baud (round 2's bug);
-/// retune too late and the chip's fast echo has come and gone (round 3's).
+/// How the driver handles the one baud switch (after the `0x8E` commit's
+/// echo, before the first `0x80` link test). The wire is idle at that point
+/// — the commit's echo was just read — so this is insurance plus a tunable
+/// settle: the raggedy first `0x80` after a rate change is exactly what
+/// stcgal's four-test retries absorb, and a few ms of settle can stand in.
 #[derive(Clone, Copy, Debug)]
 pub struct DrainConfig {
     pub mode: DrainMode,
-    /// Extra milliseconds after the drain completes, before the retune.
-    /// Signed so a bench sweep can undershoot (the last stop bit is the
-    /// only true deadline). Clamped so the total wait is never negative.
+    /// Milliseconds to wait AFTER the retune, before the first `0x80` — a
+    /// settle window for the chip's newly-switched UART. Negative is clamped
+    /// to zero.
     pub margin_ms: i64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DrainMode {
-    /// Real `tcdrain(2)` on the fd — blocks to the exact wire-end. stcgal's
-    /// approach; retune immediately after (margin 0).
+    /// `tcdrain(2)` the (idle) wire before the retune — cheap insurance that
+    /// nothing is mid-flight.
     TcDrain,
-    /// Sleep the frame's computed wire time (`n × 10 / baud`). The fallback
-    /// if the OS does not honour tcdrain for this adapter.
+    /// Skip the drain; the wire is idle at the retune anyway.
     ComputeWireTime,
 }
 
@@ -68,23 +68,6 @@ impl Default for DrainConfig {
     fn default() -> Self {
         DrainConfig { mode: DrainMode::TcDrain, margin_ms: 0 }
     }
-}
-
-/// Milliseconds a frame of `n` bytes needs on the wire at `baud`, at 8N1
-/// (10 bit-times per byte), rounded up, plus a fixed margin for the
-/// USB-serial adapter's own latency. `set_baud` reconfigures the UART the
-/// instant it is called; if the frame has not physically drained, its tail
-/// goes out at the new rate and the chip never sees a valid frame — which
-/// is exactly why the 0x8F probe got no echo until this wait existed
-/// (CH340/macOS, silicon 2026-08-18: `flush()`/tcdrain did not guarantee
-/// the wire was empty). Deterministic and portable — no reliance on the OS
-/// draining on our behalf.
-fn wire_drain_ms(n: usize, baud: u32) -> u64 {
-    const MARGIN_MS: u64 = 10;
-    if baud == 0 {
-        return MARGIN_MS;
-    }
-    (n as u64 * 10 * 1000).div_ceil(baud as u64) + MARGIN_MS
 }
 
 /// Progress reporting, so the CLI's chattiness is not baked into the driver.
@@ -228,53 +211,33 @@ pub fn run<W: Wire, L: Log>(
             Action::Finished => return Ok(()),
             Action::AwaitingReply => unreachable!("driver never leaves a reply outstanding"),
             Action::SetBaud(baud) => {
-                log.note(&format!("retuning the link to {baud} baud (port stays open)"));
+                // The retune lands between the 0x8E commit's echo (read at the
+                // handshake baud) and the first 0x80 test (sent at the new
+                // baud) — the proven stcgal sequence. Nothing is in flight
+                // here (we just READ the echo), but a tcdrain is cheap
+                // insurance, and --drain-margin doubles as a SETTLE delay
+                // after the switch before the first 0x80 — the raggedy first
+                // test stcgal's retries absorb.
+                if drain.mode == DrainMode::TcDrain {
+                    wire.drain().map_err(|e| wrap(session, Error::Io(e)))?;
+                }
                 wire.set_baud(baud).map_err(|e| wrap(session, Error::Io(e)))?;
+                let settle = drain.margin_ms.max(0) as u64;
+                if settle > 0 {
+                    std::thread::sleep(Duration::from_millis(settle));
+                }
+                log.note(&format!(
+                    "retuned to {baud} baud (settle {settle} ms), port stays open"
+                ));
                 // Whatever was in flight across the rate change is garbage by
                 // definition; the only thing to resynchronise on is the next
                 // 46 B9 (§3.4), which the Receiver already does.
                 rx = Receiver::new();
             }
-            Action::Send { label, bytes, expect_reply, timeout_ms, retune_after_send, .. } => {
+            Action::Send { label, bytes, expect_reply, timeout_ms, .. } => {
                 log.step(&label, &bytes);
                 wire.write_all(&bytes).map_err(|e| wrap(session, Error::Io(e)))?;
                 wire.flush().map_err(|e| wrap(session, Error::Io(e)))?;
-                // The chip switched rate on receiving this frame (the 0x8F
-                // probe) and its echo comes back at the new baud — retune
-                // between the write and the read (silicon, 2026-08-18). The
-                // window is narrow: retune before the frame drains and its
-                // tail goes out at the new rate (round 2); retune after the
-                // chip's ~1 ms echo has passed and it is lost (round 3). So
-                // wait for the EXACT wire-end — a real tcdrain, or the
-                // computed wire time — then an optional signed margin.
-                if let Some(baud) = retune_after_send {
-                    match drain.mode {
-                        // tcdrain already blocked to the exact wire-end, so a
-                        // negative margin cannot undershoot it — only a
-                        // positive margin adds a cushion.
-                        DrainMode::TcDrain => {
-                            wire.drain().map_err(|e| wrap(session, Error::Io(e)))?;
-                            let extra = drain.margin_ms.max(0) as u64;
-                            if extra > 0 {
-                                std::thread::sleep(Duration::from_millis(extra));
-                            }
-                        }
-                        // The computed wire time is a sleep, so the signed
-                        // margin can shorten it (the last stop bit is the only
-                        // true deadline) or lengthen it — clamped at zero.
-                        DrainMode::ComputeWireTime => {
-                            let base = wire_drain_ms(bytes.len(), wire.baud()) as i64;
-                            let total = (base + drain.margin_ms).max(0) as u64;
-                            std::thread::sleep(Duration::from_millis(total));
-                        }
-                    }
-                    log.note(&format!(
-                        "drained ({:?}, margin {} ms), retuning to {baud} baud before the reply",
-                        drain.mode, drain.margin_ms
-                    ));
-                    wire.set_baud(baud).map_err(|e| wrap(session, Error::Io(e)))?;
-                    rx = Receiver::new();
-                }
                 if !expect_reply {
                     continue;
                 }
@@ -329,30 +292,3 @@ fn wrap(session: &Session, e: Error) -> Error {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::wire_drain_ms;
-
-    // The 0x8F probe is a 14-byte frame. At the 2400 handshake baud it needs
-    // ~58 ms on the wire (14 × 10 / 2400 = 58.3 ms) — the exact figure the
-    // bench measured — plus the 10 ms adapter margin. Retuning before this
-    // elapses truncated the frame and the chip never echoed (silicon fix,
-    // 2026-08-18).
-    #[test]
-    fn probe_frame_wire_time_at_handshake_baud() {
-        assert_eq!(wire_drain_ms(14, 2400), 59 + 10); // ceil(58.33) + margin
-    }
-
-    // At the transfer baud the same frame is ~1 ms, so the margin dominates —
-    // still safe, never harmful.
-    #[test]
-    fn fast_baud_is_margin_bound() {
-        assert_eq!(wire_drain_ms(14, 115200), 2 + 10); // ceil(1.22) + margin
-    }
-
-    // A zero baud (never reached in practice) must not divide by zero.
-    #[test]
-    fn zero_baud_is_margin_only() {
-        assert_eq!(wire_drain_ms(14, 0), 10);
-    }
-}

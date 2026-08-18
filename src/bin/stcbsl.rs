@@ -49,11 +49,10 @@ OPTIONS:
       --handshake-baud <N>  handshake baud                [default 2400]
       --parity <none|even>  wire parity                   [default none]
       --wait <SECONDS>      how long to pulse for the BSL [default 30]
-      --drain-mode <M>      wire-drain before the baud switch: tcdrain (real
-                            tcdrain(2), exact wire-end) | wire (computed
-                            sleep)                        [default tcdrain]
-      --drain-margin <MS>   extra ms after the drain, signed (may undershoot
-                            the computed sleep)           [default 0]
+      --drain-mode <M>      at the baud switch: tcdrain (tcdrain(2) the idle
+                            wire first) | wire (skip it)  [default tcdrain]
+      --drain-margin <MS>   settle ms after the switch, before the first 0x80
+                            link test                     [default 0]
       --blocks <N>          erase block count (256 B each), `erase` only
       --keep-options        write the option byte back (default for `write`)
       --skip-options        do not send the option frame at all

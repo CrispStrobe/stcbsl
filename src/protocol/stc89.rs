@@ -318,6 +318,12 @@ impl ProtocolFamily for Stc89 {
 
         // --- §5.3 baud negotiation, from the MEASURED frequency (§7.1 rule 2)
         let reload = Stc89::timer_reload(info.measured_hz, opts.transfer_baud)?;
+        // The proven sequence (stcgal runtime observed against a pty replaying
+        // our captures, termios sampled per-frame, 2026-08-18): BOTH the 0x8F
+        // probe and the 0x8E commit are sent AND echoed at the HANDSHAKE baud;
+        // the link never retunes around them. The switch to the transfer baud
+        // happens at the FIRST 0x80 link test — retune, THEN send 0x80 there.
+        // (An earlier "echo at the new baud" model was wrong; see git log.)
         steps.push(Step {
             phase: Phase::BaudProbe,
             label: format!("baud probe -> {} baud", opts.transfer_baud),
@@ -325,12 +331,6 @@ impl ProtocolFamily for Stc89 {
             expect: Expect::Echo,
             timeout_ms: opts.reply_timeout_ms,
             retune_to: None,
-            // The chip switches rate on RECEIVING 0x8F and echoes at the new
-            // baud ("checking" = does the new rate work), so the host retunes
-            // after sending the probe, before reading its echo. Verified on
-            // silicon 2026-08-18; the earlier after-commit model timed out
-            // reading the 0x8F echo at the old baud.
-            retune_before_read: Some(opts.transfer_baud),
             write_addr: None,
         });
         steps.push(Step {
@@ -339,10 +339,10 @@ impl ProtocolFamily for Stc89 {
             frame: Stc89::baud_commit_frame(reload),
             expect: Expect::Echo,
             timeout_ms: opts.reply_timeout_ms,
-            // Already at the new baud by now (the probe retuned us); the
-            // commit and its echo both happen there.
-            retune_to: None,
-            retune_before_read: None,
+            // Retune AFTER the commit's echo is read (still at the handshake
+            // baud) and BEFORE the first 0x80 is sent — "retune, then send the
+            // test". The SetBaud lands between this step and the link tests.
+            retune_to: Some(opts.transfer_baud),
             write_addr: None,
         });
 
@@ -358,7 +358,6 @@ impl ProtocolFamily for Stc89 {
                 },
                 timeout_ms: opts.reply_timeout_ms,
                 retune_to: None,
-                retune_before_read: None,
                 write_addr: None,
             });
         }
@@ -400,7 +399,6 @@ impl ProtocolFamily for Stc89 {
             expect: Expect::AckLen { cmd: REPLY_ACK, payload_len: ERASE_REPLY_LEN },
             timeout_ms: opts.erase_timeout_ms,
             retune_to: None,
-            retune_before_read: None,
             write_addr: None,
         });
 
@@ -428,7 +426,6 @@ impl ProtocolFamily for Stc89 {
                     expect: Expect::BlockAck { sum: Stc89::block_ack(chunk) },
                     timeout_ms: opts.reply_timeout_ms,
                     retune_to: None,
-                    retune_before_read: None,
                     write_addr: Some(addr),
                 });
             }
@@ -443,7 +440,6 @@ impl ProtocolFamily for Stc89 {
                     expect: Expect::Echo,
                     timeout_ms: opts.reply_timeout_ms,
                     retune_to: None,
-                    retune_before_read: None,
                     write_addr: None,
                 });
             }
@@ -464,7 +460,6 @@ fn run_step(opts: &SessionOptions) -> Step {
         expect: Expect::Nothing,
         timeout_ms: opts.reply_timeout_ms,
         retune_to: None,
-        retune_before_read: None,
         write_addr: None,
     }
 }
