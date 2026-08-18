@@ -26,6 +26,7 @@ libc = { version = "0.2", optional = true }
 [[bin]]
 name = "stcbsl"
 path = "src/bin/stcbsl.rs"
+required-features = ["serial"]
 
 [profile.release]
 opt-level = 2
