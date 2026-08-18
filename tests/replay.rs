@@ -345,12 +345,19 @@ fn replay(name: &str, job: Job) -> Outcome {
             continue;
         }
         // A host frame: whatever we would send next must equal it exactly.
-        // The SetBaud lands here (after the 0x8E commit's echo, before the
-        // first 0x80), recorded at the count of host frames sent so far.
+        // Baud changes ride the Send — a drop-back before the write, a
+        // drain-and-switch after it — recorded in the order they happen so
+        // the sequence (not just the bytes) is checked.
+        let mut before = None;
+        let mut after = None;
         let bytes = loop {
             match session.next_action() {
                 Action::SetBaud(b) => out.retunes.push((out.host_frames_matched, b)),
-                Action::Send { bytes, .. } => break Some(bytes),
+                Action::Send { bytes, retune_before_send, retune_after_send, .. } => {
+                    before = retune_before_send;
+                    after = retune_after_send;
+                    break Some(bytes);
+                }
                 Action::AwaitingReply => {
                     // The capture moved on without giving us the reply the
                     // plan is waiting for: the aborted session.
@@ -363,6 +370,11 @@ fn replay(name: &str, job: Job) -> Outcome {
             out.stopped_awaiting_reply = true;
             break;
         };
+        // retune_before_send happens at THIS frame index (before its bytes go
+        // out); retune_after_send happens at the same frame, after the bytes.
+        if let Some(b) = before {
+            out.retunes.push((out.host_frames_matched + 1, b));
+        }
         assert_eq!(
             stcbsl::frame::hex(&bytes),
             stcbsl::frame::hex(&r.bytes),
@@ -372,6 +384,9 @@ fn replay(name: &str, job: Job) -> Outcome {
             r.phase
         );
         out.host_frames_matched += 1;
+        if let Some(b) = after {
+            out.retunes.push((out.host_frames_matched, b));
+        }
     }
     out.session = session;
     out
@@ -408,11 +423,11 @@ fn replay_erase_sessions() {
         assert_eq!(out.host_frames_matched, 8, "{name}");
         assert_eq!(out.mcu_replies_accepted, 7, "{name}: everything but 0x82");
         assert!(out.session.is_finished(), "{name}");
-        // §5.3: both the 0x8F probe and the 0x8E commit are sent and echoed
-        // at the handshake baud; the retune lands AFTER them (host frames 1
-        // and 2), before the first 0x80 link test — the proven stcgal
-        // sequence observed against a pty replay (2026-08-18).
-        assert_eq!(out.retunes, vec![(2, 115200)], "{name}");
+        // §5.3, the definitive dance (pyserial trace of a real flash,
+        // 2026-08-18): 0x8F sent at 2400 then read at 115200 (switch after
+        // frame 1); 0x8E drops BACK to 2400 to send (before frame 2) then
+        // reads at 115200; the link then stays at 115200.
+        assert_eq!(out.retunes, vec![(1, 115200), (2, 2400), (2, 115200)], "{name}");
         assert!(!out.session.flash_is_indeterminate());
     }
 }
@@ -433,7 +448,7 @@ fn replay_flash_sessions() {
         assert_eq!(out.host_frames_matched, 9 + blocks, "{name}");
         // everything but 0x82 is answered
         assert_eq!(out.mcu_replies_accepted, 8 + blocks, "{name}");
-        assert_eq!(out.retunes, vec![(2, 115200)], "{name}");
+        assert_eq!(out.retunes, vec![(1, 115200), (2, 2400), (2, 115200)], "{name}");
         assert!(out.session.is_finished(), "{name}");
         assert!(!out.session.flash_is_indeterminate(), "{name}");
     }

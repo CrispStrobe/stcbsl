@@ -318,19 +318,24 @@ impl ProtocolFamily for Stc89 {
 
         // --- §5.3 baud negotiation, from the MEASURED frequency (§7.1 rule 2)
         let reload = Stc89::timer_reload(info.measured_hz, opts.transfer_baud)?;
-        // The proven sequence (stcgal runtime observed against a pty replaying
-        // our captures, termios sampled per-frame, 2026-08-18): BOTH the 0x8F
-        // probe and the 0x8E commit are sent AND echoed at the HANDSHAKE baud;
-        // the link never retunes around them. The switch to the transfer baud
-        // happens at the FIRST 0x80 link test — retune, THEN send 0x80 there.
-        // (An earlier "echo at the new baud" model was wrong; see git log.)
+        // §5.3 baud negotiation — the DEFINITIVE sequence, from a pyserial
+        // trace of a real, successful stcgal flash of this chip (2026-08-18;
+        // an earlier pty replay misled us because a fake chip answered
+        // instantly). BOTH 0x8F and 0x8E are SENT at the handshake baud, then
+        // the host drains, switches to the transfer baud, and READS the echo
+        // there — the chip retimes on receiving the frame and answers at the
+        // new rate after an ~940 ms internal trial. 0x8E additionally drops
+        // BACK to the handshake baud to be sent (0x8F's echo left us at the
+        // transfer baud). After 0x8E's echo the link stays at the transfer
+        // baud through the 0x80 tests and the rest of the session.
         steps.push(Step {
             phase: Phase::BaudProbe,
             label: format!("baud probe -> {} baud", opts.transfer_baud),
             frame: Stc89::baud_probe_frame(reload),
             expect: Expect::Echo,
             timeout_ms: opts.reply_timeout_ms,
-            retune_to: None,
+            retune_before_send: None, // already at the handshake baud
+            retune_after_send: Some(opts.transfer_baud),
             write_addr: None,
         });
         steps.push(Step {
@@ -339,10 +344,8 @@ impl ProtocolFamily for Stc89 {
             frame: Stc89::baud_commit_frame(reload),
             expect: Expect::Echo,
             timeout_ms: opts.reply_timeout_ms,
-            // Retune AFTER the commit's echo is read (still at the handshake
-            // baud) and BEFORE the first 0x80 is sent — "retune, then send the
-            // test". The SetBaud lands between this step and the link tests.
-            retune_to: Some(opts.transfer_baud),
+            retune_before_send: Some(opts.handshake_baud), // drop back to send
+            retune_after_send: Some(opts.transfer_baud),
             write_addr: None,
         });
 
@@ -357,7 +360,8 @@ impl ProtocolFamily for Stc89 {
                     payload: LINK_TEST_ACK_PAYLOAD.to_vec(),
                 },
                 timeout_ms: opts.reply_timeout_ms,
-                retune_to: None,
+                retune_before_send: None,
+                retune_after_send: None,
                 write_addr: None,
             });
         }
@@ -398,7 +402,8 @@ impl ProtocolFamily for Stc89 {
             frame: Stc89::erase_frame(blocks as u8),
             expect: Expect::AckLen { cmd: REPLY_ACK, payload_len: ERASE_REPLY_LEN },
             timeout_ms: opts.erase_timeout_ms,
-            retune_to: None,
+            retune_before_send: None,
+            retune_after_send: None,
             write_addr: None,
         });
 
@@ -425,7 +430,8 @@ impl ProtocolFamily for Stc89 {
                     frame: Stc89::write_frame(addr, chunk),
                     expect: Expect::BlockAck { sum: Stc89::block_ack(chunk) },
                     timeout_ms: opts.reply_timeout_ms,
-                    retune_to: None,
+                    retune_before_send: None,
+                    retune_after_send: None,
                     write_addr: Some(addr),
                 });
             }
@@ -439,7 +445,8 @@ impl ProtocolFamily for Stc89 {
                     frame: Stc89::options_frame(info),
                     expect: Expect::Echo,
                     timeout_ms: opts.reply_timeout_ms,
-                    retune_to: None,
+                    retune_before_send: None,
+                    retune_after_send: None,
                     write_addr: None,
                 });
             }
@@ -459,7 +466,8 @@ fn run_step(opts: &SessionOptions) -> Step {
         // failure on a perfectly successful flash.
         expect: Expect::Nothing,
         timeout_ms: opts.reply_timeout_ms,
-        retune_to: None,
+        retune_before_send: None,
+        retune_after_send: None,
         write_addr: None,
     }
 }

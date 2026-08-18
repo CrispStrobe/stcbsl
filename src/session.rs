@@ -75,14 +75,17 @@ pub struct Step {
     pub frame: Frame,
     pub expect: Expect,
     pub timeout_ms: u64,
-    /// Retune the link to this baud once this step's reply has been accepted,
-    /// before the next frame goes out. Set on the `0x8E` commit: the proven
-    /// stcgal sequence (2026-08-18) reads both the `0x8F` and `0x8E` echoes at
-    /// the handshake baud and switches only at the first `0x80` link test —
-    /// so the SetBaud lands here, between the commit's echo and that test.
-    /// In place, on the open port, resynchronising on the `46 B9` preamble
-    /// (§3.4).
-    pub retune_to: Option<u32>,
+    /// Set the link to this baud BEFORE writing this step's frame. The `0x8E`
+    /// commit is sent at the HANDSHAKE baud, so after the `0x8F` echo (read at
+    /// the transfer baud) the link drops back here first.
+    pub retune_before_send: Option<u32>,
+    /// After writing this step's frame, DRAIN the wire, then set the link to
+    /// this baud BEFORE reading the reply. Both `0x8F` and `0x8E` do this: the
+    /// chip switches rate on receiving the frame and echoes at the new baud
+    /// after an ~940 ms internal rate trial. The definitive stcgal sequence,
+    /// from a pyserial trace of a real successful flash (2026-08-18) — the
+    /// earlier pty replay hid this because a fake chip answered instantly.
+    pub retune_after_send: Option<u32>,
     /// Byte offset this step programs, for error reporting.
     pub write_addr: Option<u32>,
 }
@@ -97,6 +100,11 @@ pub enum Action {
         bytes: Vec<u8>,
         expect_reply: bool,
         timeout_ms: u64,
+        /// Baud to drop to before writing (`0x8E`); `None` otherwise.
+        retune_before_send: Option<u32>,
+        /// Baud to drain-and-switch to after writing, before reading the
+        /// reply (`0x8F`/`0x8E`); `None` otherwise.
+        retune_after_send: Option<u32>,
     },
     /// Change the port's baud rate in place — do **not** close and reopen:
     /// `docs/BENCH-FLASHING.md` records that a close/reopen loses bytes
@@ -161,7 +169,6 @@ pub struct Session {
     steps: Vec<Step>,
     at: usize,
     awaiting: bool,
-    retune_pending: Option<u32>,
     writes_started: bool,
     writes_finished: bool,
 }
@@ -172,7 +179,6 @@ impl Session {
             steps,
             at: 0,
             awaiting: false,
-            retune_pending: None,
             writes_started: false,
             writes_finished: false,
         }
@@ -185,9 +191,6 @@ impl Session {
     pub fn next_action(&mut self) -> Action {
         if self.awaiting {
             return Action::AwaitingReply;
-        }
-        if let Some(baud) = self.retune_pending.take() {
-            return Action::SetBaud(baud);
         }
         if self.at >= self.steps.len() {
             return Action::Finished;
@@ -204,6 +207,8 @@ impl Session {
             bytes: step.frame.encode(),
             expect_reply,
             timeout_ms: step.timeout_ms,
+            retune_before_send: step.retune_before_send,
+            retune_after_send: step.retune_after_send,
         };
         if expect_reply {
             self.awaiting = true;
@@ -215,7 +220,6 @@ impl Session {
 
     fn advance(&mut self) {
         let step = &self.steps[self.at];
-        self.retune_pending = step.retune_to;
         if step.phase == Phase::Write {
             let last_write = self
                 .steps

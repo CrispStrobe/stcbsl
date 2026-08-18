@@ -62,12 +62,19 @@ impl SerialWire {
             (Box::new(native), fd)
         };
         #[cfg(not(unix))]
-        let port = builder.open()?;
-        // Deliberately NOT touching DTR/RTS. §3.3: on this board DTR reaches
-        // nothing useful (`00-autoreset-attempt.log`), and if it reached RST
-        // that would be a *warm* boot, which `[DS89]` §2.2.5 sends straight to
-        // the application. There is no wiring of DTR that produces a cold
-        // boot on its own, so an autoreset mode here would be a lie.
+        let mut port = builder.open()?;
+        #[cfg(unix)]
+        let mut port = port;
+        // Assert DTR and RTS at open. pyserial does this unconditionally and
+        // stcgal inherits it; serialport-rs does not by default. This board's
+        // DTR demonstrably drives *something* (the autoreset probe moved it),
+        // and the ONE line configuration ever proven to flash this silicon is
+        // stcgal's — DTR/RTS both high. Rounds 2/3 listened at the right baud
+        // and still heard nothing; a de-asserted DTR is the leading suspect
+        // (stc-e1's pyserial trace, 2026-08-18). We hold both steady — no
+        // pulsing, so no reset edge: §2.2.5's warm-boot trap is untouched.
+        let _ = port.write_data_terminal_ready(true);
+        let _ = port.write_request_to_send(true);
         Ok(SerialWire {
             port,
             baud,

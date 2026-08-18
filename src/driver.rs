@@ -41,26 +41,26 @@ pub trait Wire {
     }
 }
 
-/// How the driver handles the one baud switch (after the `0x8E` commit's
-/// echo, before the first `0x80` link test). The wire is idle at that point
-/// — the commit's echo was just read — so this is insurance plus a tunable
-/// settle: the raggedy first `0x80` after a rate change is exactly what
-/// stcgal's four-test retries absorb, and a few ms of settle can stand in.
+/// How the driver handles each `0x8F`/`0x8E` baud switch: a frame is sent at
+/// the old rate, then the wire is drained and the rate changed before the
+/// echo is read. Draining is essential (a switch on a half-sent frame
+/// corrupts its tail); the settle margin is a tunable pause after the switch,
+/// before the read, for the adapter/chip to settle.
 #[derive(Clone, Copy, Debug)]
 pub struct DrainConfig {
     pub mode: DrainMode,
-    /// Milliseconds to wait AFTER the retune, before the first `0x80` — a
-    /// settle window for the chip's newly-switched UART. Negative is clamped
-    /// to zero.
+    /// Milliseconds to wait after each switch, before reading the echo.
+    /// Negative is clamped to zero.
     pub margin_ms: i64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DrainMode {
-    /// `tcdrain(2)` the (idle) wire before the retune — cheap insurance that
-    /// nothing is mid-flight.
+    /// `tcdrain(2)` the fd before the switch — block until the frame has
+    /// physically left the wire. What stcgal (via pyserial's flush) does.
     TcDrain,
-    /// Skip the drain; the wire is idle at the retune anyway.
+    /// Skip the tcdrain (rely on `flush()` alone). A fallback for adapters
+    /// where tcdrain misbehaves; unlikely to be needed.
     ComputeWireTime,
 }
 
@@ -210,64 +210,45 @@ pub fn run<W: Wire, L: Log>(
         match session.next_action() {
             Action::Finished => return Ok(()),
             Action::AwaitingReply => unreachable!("driver never leaves a reply outstanding"),
+            // Every baud change now rides a Send (retune_before_send /
+            // retune_after_send), so a standalone SetBaud is never produced.
             Action::SetBaud(baud) => {
-                // The retune lands between the 0x8E commit's echo (read at the
-                // handshake baud) and the first 0x80 test (sent at the new
-                // baud) — the proven stcgal sequence. Nothing is in flight
-                // here (we just READ the echo), but a tcdrain is cheap
-                // insurance, and --drain-margin doubles as a SETTLE delay
-                // after the switch before the first 0x80 — the raggedy first
-                // test stcgal's retries absorb.
-                if drain.mode == DrainMode::TcDrain {
-                    wire.drain().map_err(|e| wrap(session, Error::Io(e)))?;
-                }
                 wire.set_baud(baud).map_err(|e| wrap(session, Error::Io(e)))?;
-                let settle = drain.margin_ms.max(0) as u64;
-                if settle > 0 {
-                    std::thread::sleep(Duration::from_millis(settle));
-                }
-                log.note(&format!(
-                    "retuned to {baud} baud (settle {settle} ms), port stays open"
-                ));
-                // Whatever was in flight across the rate change is garbage by
-                // definition; the only thing to resynchronise on is the next
-                // 46 B9 (§3.4), which the Receiver already does.
                 rx = Receiver::new();
             }
-            Action::Send { label, bytes, expect_reply, timeout_ms, .. } => {
-                // Bench experiment (env-gated, inert otherwise): a quiet gap
-                // before the 0x8F probe. stcgal (Python) leaves ~68 ms between
-                // the status packet and its probe; this Rust host fires in ~1 ms,
-                // and the silicon answers stcgal but not us — the BSL may need
-                // turnaround time after its 57-byte status TX. Measured proof or
-                // refutation decides whether this becomes a real parameter.
-                if label.contains("baud probe") {
-                    // Bench experiment 2: stcgal's pulse timer keeps emitting
-                    // 0x7F for ~2 pulses AFTER the status packet (pty log,
-                    // 175.7 + 206.1 ms) — possibly the BSL's required "you
-                    // heard me" ack before it accepts commands.
-                    if let Ok(n) = std::env::var("STCBSL_POST_STATUS_PULSES") {
-                        if let Ok(n) = n.parse::<u32>() {
-                            for _ in 0..n {
-                                let _ = wire.write_all(&[0x7F]);
-                                let _ = wire.flush();
-                                std::thread::sleep(Duration::from_millis(30));
-                            }
-                            log.note(&format!(
-                                "bench experiment: {n} post-status 0x7F pulse(s) sent"));
-                        }
-                    }
-                    if let Ok(ms) = std::env::var("STCBSL_PROBE_DELAY_MS") {
-                        if let Ok(ms) = ms.parse::<u64>() {
-                            std::thread::sleep(Duration::from_millis(ms));
-                            log.note(&format!(
-                                "bench experiment: {ms} ms quiet gap before the probe"));
-                        }
-                    }
+            Action::Send {
+                label, bytes, expect_reply, timeout_ms,
+                retune_before_send, retune_after_send, ..
+            } => {
+                // Drop the link to the send baud first (the 0x8E commit is
+                // sent at the handshake baud after the 0x8F echo left us at
+                // the transfer baud).
+                if let Some(b) = retune_before_send {
+                    wire.set_baud(b).map_err(|e| wrap(session, Error::Io(e)))?;
+                    rx = Receiver::new();
                 }
                 log.step(&label, &bytes);
                 wire.write_all(&bytes).map_err(|e| wrap(session, Error::Io(e)))?;
                 wire.flush().map_err(|e| wrap(session, Error::Io(e)))?;
+                // The chip retimes on RECEIVING this frame and echoes at the
+                // NEW baud (after an ~940 ms internal trial): drain the frame
+                // fully off the wire, then switch, then read. Draining before
+                // the switch is essential — a set_baud on a half-sent frame
+                // sends its tail at the new rate and the chip sees garbage.
+                if let Some(b) = retune_after_send {
+                    if drain.mode == DrainMode::TcDrain {
+                        wire.drain().map_err(|e| wrap(session, Error::Io(e)))?;
+                    }
+                    let settle = drain.margin_ms.max(0) as u64;
+                    if settle > 0 {
+                        std::thread::sleep(Duration::from_millis(settle));
+                    }
+                    wire.set_baud(b).map_err(|e| wrap(session, Error::Io(e)))?;
+                    rx = Receiver::new();
+                    log.note(&format!(
+                        "drained, retuned to {b} baud (settle {settle} ms); reading echo there"
+                    ));
+                }
                 if !expect_reply {
                     continue;
                 }
