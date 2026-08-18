@@ -62,25 +62,45 @@ impl SerialWire {
             (Box::new(native), fd)
         };
         #[cfg(not(unix))]
-        let mut port = builder.open()?;
-        #[cfg(unix)]
-        let mut port = port;
-        // Assert DTR and RTS at open. pyserial does this unconditionally and
-        // stcgal inherits it; serialport-rs does not by default. This board's
-        // DTR demonstrably drives *something* (the autoreset probe moved it),
-        // and the ONE line configuration ever proven to flash this silicon is
-        // stcgal's — DTR/RTS both high. Rounds 2/3 listened at the right baud
-        // and still heard nothing; a de-asserted DTR is the leading suspect
-        // (stc-e1's pyserial trace, 2026-08-18). We hold both steady — no
-        // pulsing, so no reset edge: §2.2.5's warm-boot trap is untouched.
-        let _ = port.write_data_terminal_ready(true);
-        let _ = port.write_request_to_send(true);
-        Ok(SerialWire {
+        let port = builder.open()?;
+        // Deliberately NOT touching DTR/RTS. §3.3: DTR reaches nothing that
+        // helps here — stcgal flashed this chip with both lines forced LOW
+        // (owner-watched, 2026-08-18), so their state is irrelevant — and any
+        // pulse would be a warm boot (§2.2.5), straight to the application.
+        let wire = SerialWire {
             port,
             baud,
             #[cfg(unix)]
             fd,
-        })
+        };
+        // The initial rate went in via bare tcsetattr (serialport::new); on
+        // macOS that is nondeterministic for USB adapters, so force it.
+        #[cfg(target_os = "macos")]
+        wire.force_baud_iossiospeed(baud)?;
+        Ok(wire)
+    }
+
+    /// macOS: make a baud change actually take.
+    ///
+    /// The macOS CH340 driver **silently ignores** bare-termios (`tcsetattr`)
+    /// rate changes depending on call history — proven on the live chip: a
+    /// fresh open requesting 115200 stayed at 9600 and read the running
+    /// firmware's UART perfectly (stc-e1, 2026-08-18). pyserial's darwin path
+    /// always follows `tcsetattr` with `ioctl(IOSSIOSPEED)`, which is why
+    /// stcgal is reliable and every bare-termios stcbsl round was physically
+    /// stuck at 2400 while the chip echoed at 115200. We do the same ioctl.
+    #[cfg(target_os = "macos")]
+    fn force_baud_iossiospeed(&self, baud: u32) -> std::io::Result<()> {
+        // IOSSIOSPEED = _IOW('T', 2, speed_t); speed_t is a 4-byte int here,
+        // so the request encodes size 4 → 0x80045402. Arg: pointer to the
+        // speed. Matches pyserial's `array('i', [baud])`.
+        const IOSSIOSPEED: libc::c_ulong = 0x8004_5402;
+        let speed: libc::c_uint = baud;
+        let rc = unsafe { libc::ioctl(self.fd, IOSSIOSPEED, &speed as *const libc::c_uint) };
+        if rc != 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(())
     }
 
     pub fn baud(&self) -> u32 {
@@ -112,12 +132,16 @@ impl Wire for SerialWire {
     }
 
     fn set_baud(&mut self, baud: u32) -> std::io::Result<()> {
-        if baud == self.baud {
-            return Ok(());
-        }
+        // No same-baud early return: on macOS the ioctl must run every time,
+        // because whether a bare tcsetattr "takes" depends on the call
+        // history (proven: 2400→115200 was ignored, but 2400→9600→115200
+        // took). Forcing IOSSIOSPEED on each call is what makes it
+        // deterministic.
         self.port
             .set_baud_rate(baud)
             .map_err(|e| std::io::Error::other(e.to_string()))?;
+        #[cfg(target_os = "macos")]
+        self.force_baud_iossiospeed(baud)?;
         self.baud = baud;
         Ok(())
     }
