@@ -51,8 +51,8 @@ OPTIONS:
       --wait <SECONDS>      how long to pulse for the BSL [default 30]
       --drain-mode <M>      at each 8F/8E baud switch: tcdrain (tcdrain(2)
                             the wire) | wire (flush only)  [default tcdrain]
-      --drain-margin <MS>   settle ms after each switch, before reading the
-                            echo                          [default 0]
+      --drain-margin <MS>   settle ms after the drain, before switching baud
+                            (matches stcgal's sleep(0.1)) [default 100]
       --blocks <N>          erase block count (256 B each), `erase` only
       --keep-options        write the option byte back (default for `write`)
       --skip-options        do not send the option frame at all

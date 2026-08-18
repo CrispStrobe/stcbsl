@@ -49,8 +49,9 @@ pub trait Wire {
 #[derive(Clone, Copy, Debug)]
 pub struct DrainConfig {
     pub mode: DrainMode,
-    /// Milliseconds to wait after each switch, before reading the echo.
-    /// Negative is clamped to zero.
+    /// Milliseconds to wait AFTER the drain and BEFORE the baud switch — a
+    /// fixed idle-at-old-baud window (stcgal's `time.sleep(0.1)`). Negative
+    /// is clamped to zero.
     pub margin_ms: i64,
 }
 
@@ -66,7 +67,13 @@ pub enum DrainMode {
 
 impl Default for DrainConfig {
     fn default() -> Self {
-        DrainConfig { mode: DrainMode::TcDrain, margin_ms: 0 }
+        // 100 ms matches stcgal EXACTLY: its handshake does write_packet
+        // (which flushes/tcdrains) then `time.sleep(0.1)` then switches baud.
+        // We tcdrain, then wait this settle, then switch. Giving the chip a
+        // fixed idle-at-old-baud window after the 0x8F/0x8E frame before any
+        // line change is the last timing delta we found against the proven
+        // stcgal sequence (stcgal is MIT; its source is the reference now).
+        DrainConfig { mode: DrainMode::TcDrain, margin_ms: 100 }
     }
 }
 
@@ -268,7 +275,7 @@ pub fn run<W: Wire, L: Log>(
                     wire.set_baud(b).map_err(|e| wrap(session, Error::Io(e)))?;
                     rx = Receiver::new();
                     log.note(&format!(
-                        "drained, retuned to {b} baud (settle {settle} ms); reading echo there"
+                        "drained, settled {settle} ms at the old baud, switched to {b}; reading echo there"
                     ));
                 }
                 if !expect_reply {
