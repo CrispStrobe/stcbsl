@@ -32,6 +32,42 @@ pub trait Wire {
     /// The line rate currently configured — used to compute how long the
     /// frame just written needs on the wire before a retune is safe.
     fn baud(&self) -> u32;
+    /// Block until every byte written has physically left the wire (a real
+    /// `tcdrain(2)`, not `flush()`). This is the exact wire-end, the point
+    /// stcgal retunes at; the default here is `flush()` for wires that
+    /// cannot do better (the tests never call it on real hardware).
+    fn drain(&mut self) -> io::Result<()> {
+        self.flush()
+    }
+}
+
+/// How the driver waits for a frame to clear the wire before a pre-reply
+/// retune (the `0x8F` probe). The window is narrow: retune before the frame
+/// has drained and its tail goes out at the new baud (round 2's bug);
+/// retune too late and the chip's fast echo has come and gone (round 3's).
+#[derive(Clone, Copy, Debug)]
+pub struct DrainConfig {
+    pub mode: DrainMode,
+    /// Extra milliseconds after the drain completes, before the retune.
+    /// Signed so a bench sweep can undershoot (the last stop bit is the
+    /// only true deadline). Clamped so the total wait is never negative.
+    pub margin_ms: i64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DrainMode {
+    /// Real `tcdrain(2)` on the fd — blocks to the exact wire-end. stcgal's
+    /// approach; retune immediately after (margin 0).
+    TcDrain,
+    /// Sleep the frame's computed wire time (`n × 10 / baud`). The fallback
+    /// if the OS does not honour tcdrain for this adapter.
+    ComputeWireTime,
+}
+
+impl Default for DrainConfig {
+    fn default() -> Self {
+        DrainConfig { mode: DrainMode::TcDrain, margin_ms: 0 }
+    }
 }
 
 /// Milliseconds a frame of `n` bytes needs on the wire at `baud`, at 8N1
@@ -182,6 +218,7 @@ pub fn handshake<W: Wire, F: ProtocolFamily, L: Log>(
 pub fn run<W: Wire, L: Log>(
     wire: &mut W,
     session: &mut Session,
+    drain: DrainConfig,
     log: &mut L,
 ) -> Result<(), Error> {
     let mut rx = Receiver::new();
@@ -204,21 +241,37 @@ pub fn run<W: Wire, L: Log>(
                 wire.flush().map_err(|e| wrap(session, Error::Io(e)))?;
                 // The chip switched rate on receiving this frame (the 0x8F
                 // probe) and its echo comes back at the new baud — retune
-                // between the write and the read, or the reply times out at
-                // the old rate (silicon, 2026-08-18). But the frame must
-                // FULLY LEAVE THE WIRE first: set_baud reconfigures the UART
-                // immediately, and if the frame's tail is still queued it
-                // goes out at the new rate and the chip sees garbage (the
-                // probe got no echo at ANY rate until this wait existed).
-                // flush() alone did not guarantee it on CH340/macOS, so we
-                // sleep the frame's computed wire time at the OLD baud.
+                // between the write and the read (silicon, 2026-08-18). The
+                // window is narrow: retune before the frame drains and its
+                // tail goes out at the new rate (round 2); retune after the
+                // chip's ~1 ms echo has passed and it is lost (round 3). So
+                // wait for the EXACT wire-end — a real tcdrain, or the
+                // computed wire time — then an optional signed margin.
                 if let Some(baud) = retune_after_send {
-                    let drain = wire_drain_ms(bytes.len(), wire.baud());
+                    match drain.mode {
+                        // tcdrain already blocked to the exact wire-end, so a
+                        // negative margin cannot undershoot it — only a
+                        // positive margin adds a cushion.
+                        DrainMode::TcDrain => {
+                            wire.drain().map_err(|e| wrap(session, Error::Io(e)))?;
+                            let extra = drain.margin_ms.max(0) as u64;
+                            if extra > 0 {
+                                std::thread::sleep(Duration::from_millis(extra));
+                            }
+                        }
+                        // The computed wire time is a sleep, so the signed
+                        // margin can shorten it (the last stop bit is the only
+                        // true deadline) or lengthen it — clamped at zero.
+                        DrainMode::ComputeWireTime => {
+                            let base = wire_drain_ms(bytes.len(), wire.baud()) as i64;
+                            let total = (base + drain.margin_ms).max(0) as u64;
+                            std::thread::sleep(Duration::from_millis(total));
+                        }
+                    }
                     log.note(&format!(
-                        "draining {} bytes (~{drain} ms) then retuning to {baud} baud before the reply",
-                        bytes.len()
+                        "drained ({:?}, margin {} ms), retuning to {baud} baud before the reply",
+                        drain.mode, drain.margin_ms
                     ));
-                    std::thread::sleep(Duration::from_millis(drain));
                     wire.set_baud(baud).map_err(|e| wrap(session, Error::Io(e)))?;
                     rx = Receiver::new();
                 }

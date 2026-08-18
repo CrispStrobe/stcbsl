@@ -13,10 +13,13 @@ publish = false
 # The pure protocol/codec layer has no dependencies at all; `cargo test
 # --no-default-features` exercises everything the replay tests cover, offline.
 default = ["serial"]
-serial = ["dep:serialport"]
+serial = ["dep:serialport", "dep:libc"]
 
 [dependencies]
 serialport = { version = "4.9", optional = true }
+# Only for a real tcdrain(2) on the raw fd — serialport's flush() did not
+# guarantee the wire was empty on CH340/macOS (silicon, 2026-08-18).
+libc = { version = "0.2", optional = true }
 
 [[bin]]
 name = "stcbsl"

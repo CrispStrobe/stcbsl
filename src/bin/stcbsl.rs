@@ -21,7 +21,7 @@ use stcbsl::protocol::Job;
 #[cfg(feature = "serial")]
 use std::time::Duration;
 #[cfg(feature = "serial")]
-use stcbsl::driver::{self, Log};
+use stcbsl::driver::{self, DrainConfig, DrainMode, Log};
 #[cfg(feature = "serial")]
 use stcbsl::frame::{hex, Frame};
 #[cfg(feature = "serial")]
@@ -49,6 +49,11 @@ OPTIONS:
       --handshake-baud <N>  handshake baud                [default 2400]
       --parity <none|even>  wire parity                   [default none]
       --wait <SECONDS>      how long to pulse for the BSL [default 30]
+      --drain-mode <M>      wire-drain before the baud switch: tcdrain (real
+                            tcdrain(2), exact wire-end) | wire (computed
+                            sleep)                        [default tcdrain]
+      --drain-margin <MS>   extra ms after the drain, signed (may undershoot
+                            the computed sleep)           [default 0]
       --blocks <N>          erase block count (256 B each), `erase` only
       --keep-options        write the option byte back (default for `write`)
       --skip-options        do not send the option frame at all
@@ -84,6 +89,8 @@ struct Args {
     blocks: Option<u8>,
     write_options: bool,
     quiet: bool,
+    drain_mode: DrainMode,
+    drain_margin_ms: i64,
     command: Option<String>,
     positional: Vec<String>,
 }
@@ -98,6 +105,8 @@ fn parse_args(argv: &[String]) -> Result<Args, String> {
         blocks: None,
         write_options: true,
         quiet: false,
+        drain_mode: DrainConfig::default().mode,
+        drain_margin_ms: DrainConfig::default().margin_ms,
         command: None,
         positional: Vec::new(),
     };
@@ -128,6 +137,19 @@ fn parse_args(argv: &[String]) -> Result<Args, String> {
                 a.handshake_baud = next!("--handshake-baud")
                     .parse()
                     .map_err(|_| "--handshake-baud: not a number".to_string())?
+            }
+            "--drain-mode" => {
+                let v = next!("--drain-mode");
+                a.drain_mode = match v.as_str() {
+                    "tcdrain" => DrainMode::TcDrain,
+                    "wire" => DrainMode::ComputeWireTime,
+                    other => return Err(format!("--drain-mode: expected tcdrain|wire, got {other:?}")),
+                };
+            }
+            "--drain-margin" => {
+                a.drain_margin_ms = next!("--drain-margin")
+                    .parse()
+                    .map_err(|_| "--drain-margin: not an integer (ms, may be negative)".to_string())?;
             }
             "--parity" => {
                 let v = next!("--parity");
@@ -315,7 +337,8 @@ fn cmd_session(args: &Args, job: Job) -> Result<(), String> {
         println!("plan: {} frames", steps.len());
     }
     let mut session = Session::new(steps);
-    driver::run(&mut wire, &mut session, &mut log).map_err(|e| e.to_string())?;
+    let drain = DrainConfig { mode: args.drain_mode, margin_ms: args.drain_margin_ms };
+    driver::run(&mut wire, &mut session, drain, &mut log).map_err(|e| e.to_string())?;
 
     match job {
         Job::Identify => println!("done — chip released to its application"),

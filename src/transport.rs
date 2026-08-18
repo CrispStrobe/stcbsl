@@ -38,23 +38,42 @@ const READ_POLL: Duration = Duration::from_millis(20);
 pub struct SerialWire {
     port: Box<dyn SerialPort>,
     baud: u32,
+    /// The raw fd, kept for a real `tcdrain(2)` — the trait object cannot
+    /// hand it back. Unix only; drain() falls back to flush elsewhere.
+    #[cfg(unix)]
+    fd: std::os::unix::io::RawFd,
 }
 
 impl SerialWire {
     pub fn open(path: &str, baud: u32, parity: Parity) -> serialport::Result<SerialWire> {
-        let port = serialport::new(path, baud)
+        let builder = serialport::new(path, baud)
             .data_bits(WIRE_DATA_BITS)
             .parity(parity)
             .stop_bits(WIRE_STOP_BITS)
             .flow_control(FlowControl::None)
-            .timeout(READ_POLL)
-            .open()?;
+            .timeout(READ_POLL);
+        // Open the platform-native handle so its fd is reachable for
+        // tcdrain, then keep it behind the trait object as before.
+        #[cfg(unix)]
+        let (port, fd): (Box<dyn SerialPort>, std::os::unix::io::RawFd) = {
+            use std::os::unix::io::AsRawFd;
+            let native = builder.open_native()?;
+            let fd = native.as_raw_fd();
+            (Box::new(native), fd)
+        };
+        #[cfg(not(unix))]
+        let port = builder.open()?;
         // Deliberately NOT touching DTR/RTS. §3.3: on this board DTR reaches
         // nothing useful (`00-autoreset-attempt.log`), and if it reached RST
         // that would be a *warm* boot, which `[DS89]` §2.2.5 sends straight to
         // the application. There is no wiring of DTR that produces a cold
         // boot on its own, so an autoreset mode here would be a lie.
-        Ok(SerialWire { port, baud })
+        Ok(SerialWire {
+            port,
+            baud,
+            #[cfg(unix)]
+            fd,
+        })
     }
 
     pub fn baud(&self) -> u32 {
@@ -102,5 +121,20 @@ impl Wire for SerialWire {
 
     fn baud(&self) -> u32 {
         self.baud
+    }
+
+    /// A real `tcdrain(2)`: block until the UART has physically shifted out
+    /// every queued byte. `flush()` did not guarantee this on CH340/macOS
+    /// (silicon, 2026-08-18), which is the whole reason this exists.
+    #[cfg(unix)]
+    fn drain(&mut self) -> std::io::Result<()> {
+        Write::flush(&mut self.port)?;
+        // SAFETY: self.fd is the live descriptor of self.port, owned for the
+        // lifetime of this SerialWire; tcdrain only reads it.
+        let rc = unsafe { libc::tcdrain(self.fd) };
+        if rc != 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(())
     }
 }
