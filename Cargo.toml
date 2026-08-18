@@ -5,9 +5,11 @@ edition = "2021"
 rust-version = "1.74"
 license = "MIT"
 description = "Clean-room STC serial bootloader (ISP) flasher — STC89 protocol family"
-repository = "https://github.com/CrispStrobe/stc12c5a60s2-lab"
+repository = "https://github.com/CrispStrobe/stcbsl"
 authors = ["CrispStrobe <cze+github@mailbox.org>"]
-publish = false
+readme = "README.md"
+keywords = ["stc", "8051", "isp", "bootloader", "flasher"]
+categories = ["embedded", "command-line-utilities", "hardware-support"]
 
 [features]
 # The pure protocol/codec layer has no dependencies at all; `cargo test
