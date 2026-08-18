@@ -1,47 +1,55 @@
 // SPDX-License-Identifier: MIT
-// rxprobe — bench instrument: does RX survive a mid-session set_baud on
-// this adapter? Open at a wrong rate, count bytes, switch to the rate a
-// chattering firmware transmits at (04-hello89: 9600, one line/second),
-// count again. If the second count is zero while the firmware
-// demonstrably prints, serialport's set_baud kills receive on this
-// CH340/macOS — the last candidate for the stcbsl 115200 silence,
-// reproduced with no bootloader and no power cycles.
-use std::io::Read;
+// rxprobe v2 — bench instrument against a live 9600-baud chatterer:
+// exercise stcbsl's OWN SerialWire (open, set_baud incl. the macOS
+// IOSSIOSPEED path) and report byte counts AND legibility per rate.
+// A mismatched rate must still yield garbage BYTES (python at 115200
+// read 203B of the 9600 stream); zero bytes at any rate = the layer
+// where the flasher goes deaf, reproduced without the bootloader.
 use std::time::{Duration, Instant};
 
-fn count(port: &mut dyn serialport::SerialPort, secs: u64, label: &str) {
+use stcbsl::driver::Wire;
+use stcbsl::transport::SerialWire;
+
+fn count(w: &mut SerialWire, secs: u64, label: &str) {
     let mut n = 0usize;
+    let mut sample = Vec::new();
     let mut buf = [0u8; 256];
     let end = Instant::now() + Duration::from_secs(secs);
     while Instant::now() < end {
-        match port.read(&mut buf) {
-            Ok(k) => n += k,
-            Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => {}
+        match Wire::read(w, &mut buf) {
+            Ok(k) => {
+                n += k;
+                if sample.len() < 40 {
+                    sample.extend_from_slice(&buf[..k.min(40)]);
+                }
+            }
             Err(e) => {
                 println!("{label}: read error {e}");
                 return;
             }
         }
     }
-    println!("{label}: {n} bytes in {secs}s");
+    let legible = sample.windows(5).any(|w| w == b"hello");
+    println!("{label}: {n} bytes in {secs}s, legible={legible}");
 }
 
 fn main() {
     let dev = std::env::args().nth(1).expect("usage: rxprobe <device>");
-    let mut port = serialport::new(&dev, 2400)
-        .timeout(Duration::from_millis(100))
-        .open()
+    let mut w = SerialWire::open(&dev, 2400, stcbsl::transport::WIRE_PARITY)
         .expect("open");
-    println!("open at 2400");
-    count(&mut *port, 3, "phase 1 (2400, expect garbage/none)");
-    port.set_baud_rate(9600).expect("set_baud");
-    println!("set_baud 9600 done");
-    count(&mut *port, 6, "phase 2 (9600, expect ~26 B/s if RX alive)");
-    // control: a fresh open directly at 9600 must always hear it
-    drop(port);
-    let mut port2 = serialport::new(&dev, 9600)
-        .timeout(Duration::from_millis(100))
-        .open()
-        .expect("reopen");
-    count(&mut *port2, 6, "phase 3 (fresh open 9600, control)");
+    println!("opened at 2400 via SerialWire");
+    count(&mut w, 3, "phase 1 @2400 (mismatch: expect garbage bytes)");
+    w.set_baud(9600).expect("set 9600");
+    count(&mut w, 4, "phase 2 @9600 (match: expect legible)");
+    // phase 2b: the REAL session's chain — write, tcdrain, switch, read
+    Wire::write_all(&mut w, &[0x46, 0xb9, 0x6a, 0x00, 0x0c, 0x8f, 0xff,
+                              0xfd, 0x00, 0x06, 0xa0, 0x81, 0x28, 0x16])
+        .expect("write");
+    Wire::drain(&mut w).expect("drain");
+    w.set_baud(9600).expect("re-set 9600");
+    count(&mut w, 4, "phase 2b write+drain+switch @9600 (expect legible)");
+    w.set_baud(115200).expect("set 115200");
+    count(&mut w, 4, "phase 3 @115200 (mismatch: expect garbage bytes)");
+    w.set_baud(9600).expect("set 9600 again");
+    count(&mut w, 4, "phase 4 @9600 again (match: expect legible)");
 }
