@@ -160,23 +160,34 @@ pub fn handshake<W: Wire, F: ProtocolFamily, L: Log>(
     let mut buf = [0u8; 256];
     let started = Instant::now();
     let mut noise = 0usize;
-    // Stop pulsing 0x7F the instant the chip starts talking. The BSL replies
-    // only once it has synced to our pulses, so the first byte we hear IS its
-    // answer beginning; keep pulsing and the loop's fast partial reads bury
-    // the ~237 ms status packet under a fresh sync barrage (~20-40 strays at
-    // 2400), which a BSL reads as a new sync attempt and drops back out of
-    // command mode — the probe is then ignored forever (stc-e1's chip-side
-    // audit, 2026-08-18; stcgal's timer emits exactly two in-flight strays
-    // post-status, then silence). One byte in = pulses off, read to the frame.
-    let mut heard = false;
+    // Pulse 0x7F on a fixed ~30 ms cadence (stcgal's timer), and HOLD pulses
+    // only while a real frame is mid-flight — a `46 B9` prefix is accumulating
+    // and still advancing. That is the exact discriminator we need:
+    //   * Pulsing every loop iteration barraged the chip: across the status
+    //     packet's ~237 ms the fast partial reads fired 20-40 strays, which a
+    //     BSL reads as a fresh sync and drops out of command mode.
+    //   * A latch on the first byte was worse: a chip left chattering at the
+    //     wrong baud (or any running app) makes us stop pulsing BEFORE the
+    //     cold cycle, so the fresh BSL — which auto-bauds off our pulses —
+    //     hears silence and never appears (stc-e1, 2026-08-18).
+    // Noise almost never contains `46 B9` (the whole corpus's 248 noise bytes
+    // have none), so `pending() > 0` after draining means a genuine frame is
+    // arriving; hold then. If that partial stalls (a fluke magic in noise
+    // that never completes), resume pulsing after 400 ms.
+    const PULSE_EVERY: Duration = Duration::from_millis(30);
+    const PARTIAL_STALL: Duration = Duration::from_millis(400);
+    let mut last_pulse = started - PULSE_EVERY; // force an immediate first pulse
+    let mut last_byte = started;
     while started.elapsed() < wait {
-        if !heard {
+        let mid_frame = rx.pending() > 0 && last_byte.elapsed() < PARTIAL_STALL;
+        if !mid_frame && last_pulse.elapsed() >= PULSE_EVERY {
             wire.write_all(&[SYNC_BYTE])?;
             wire.flush()?;
+            last_pulse = Instant::now();
         }
         let n = wire.read(&mut buf)?;
         if n > 0 {
-            heard = true;
+            last_byte = Instant::now();
             rx.feed(&buf[..n]);
         }
         while let Some(result) = rx.next_frame() {
