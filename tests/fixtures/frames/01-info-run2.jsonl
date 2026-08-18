@@ -1,0 +1,41 @@
+{"phase": "sync", "dir": "mcu->host", "bytes_hex": "25", "note": "not-a-frame; noise; text=Waiting for MCU, please cycle power:", "seq": 1, "src": "01-info-run2.log:1", "fmt": "stcgal_debug"}
+{"phase": "sync", "dir": "mcu->host", "bytes_hex": "31", "note": "not-a-frame; noise", "seq": 2, "src": "01-info-run2.log:2", "fmt": "stcgal_debug"}
+{"phase": "sync", "dir": "mcu->host", "bytes_hex": "20", "note": "not-a-frame; noise", "seq": 3, "src": "01-info-run2.log:3", "fmt": "stcgal_debug"}
+{"phase": "sync", "dir": "mcu->host", "bytes_hex": "43", "note": "not-a-frame; noise", "seq": 4, "src": "01-info-run2.log:4", "fmt": "stcgal_debug"}
+{"phase": "sync", "dir": "mcu->host", "bytes_hex": "25", "note": "not-a-frame; noise", "seq": 5, "src": "01-info-run2.log:5", "fmt": "stcgal_debug"}
+{"phase": "sync", "dir": "mcu->host", "bytes_hex": "25", "note": "not-a-frame; noise", "seq": 6, "src": "01-info-run2.log:6", "fmt": "stcgal_debug"}
+{"phase": "sync", "dir": "mcu->host", "bytes_hex": "d1", "note": "not-a-frame; noise", "seq": 7, "src": "01-info-run2.log:7", "fmt": "stcgal_debug"}
+{"phase": "sync", "dir": "mcu->host", "bytes_hex": "01", "note": "not-a-frame; noise", "seq": 8, "src": "01-info-run2.log:8", "fmt": "stcgal_debug"}
+{"phase": "sync", "dir": "mcu->host", "bytes_hex": "04", "note": "not-a-frame; noise", "seq": 9, "src": "01-info-run2.log:9", "fmt": "stcgal_debug"}
+{"phase": "sync", "dir": "mcu->host", "bytes_hex": "fc", "note": "not-a-frame; noise", "seq": 10, "src": "01-info-run2.log:10", "fmt": "stcgal_debug"}
+{"phase": "sync", "dir": "mcu->host", "bytes_hex": "5b", "note": "not-a-frame; noise", "seq": 11, "src": "01-info-run2.log:11", "fmt": "stcgal_debug"}
+{"phase": "sync", "dir": "mcu->host", "bytes_hex": "31", "note": "not-a-frame; noise", "seq": 12, "src": "01-info-run2.log:12", "fmt": "stcgal_debug"}
+{"phase": "sync", "dir": "mcu->host", "bytes_hex": "20", "note": "not-a-frame; noise", "seq": 13, "src": "01-info-run2.log:13", "fmt": "stcgal_debug"}
+{"phase": "sync", "dir": "mcu->host", "bytes_hex": "21", "note": "not-a-frame; noise", "seq": 14, "src": "01-info-run2.log:14", "fmt": "stcgal_debug"}
+{"phase": "sync", "dir": "mcu->host", "bytes_hex": "5d", "note": "not-a-frame; noise", "seq": 15, "src": "01-info-run2.log:15", "fmt": "stcgal_debug"}
+{"phase": "sync", "dir": "mcu->host", "bytes_hex": "25", "note": "not-a-frame; noise", "seq": 16, "src": "01-info-run2.log:16", "fmt": "stcgal_debug"}
+{"phase": "sync", "dir": "mcu->host", "bytes_hex": "91", "note": "not-a-frame; noise", "seq": 17, "src": "01-info-run2.log:17", "fmt": "stcgal_debug"}
+{"phase": "sync", "dir": "mcu->host", "bytes_hex": "d1", "note": "not-a-frame; noise", "seq": 18, "src": "01-info-run2.log:18", "fmt": "stcgal_debug"}
+{"phase": "sync", "dir": "mcu->host", "bytes_hex": "80", "note": "not-a-frame; noise", "seq": 19, "src": "01-info-run2.log:19", "fmt": "stcgal_debug"}
+{"phase": "sync", "dir": "mcu->host", "bytes_hex": "25", "note": "not-a-frame; noise", "seq": 20, "src": "01-info-run2.log:20", "fmt": "stcgal_debug"}
+{"phase": "sync", "dir": "mcu->host", "bytes_hex": "61", "note": "not-a-frame; noise", "seq": 21, "src": "01-info-run2.log:21", "fmt": "stcgal_debug"}
+{"phase": "sync", "dir": "mcu->host", "bytes_hex": "20", "note": "not-a-frame; noise", "seq": 22, "src": "01-info-run2.log:22", "fmt": "stcgal_debug"}
+{"phase": "sync", "dir": "mcu->host", "bytes_hex": "11", "note": "not-a-frame; noise", "seq": 23, "src": "01-info-run2.log:23", "fmt": "stcgal_debug"}
+{"phase": "sync", "dir": "mcu->host", "bytes_hex": "25", "note": "not-a-frame; noise", "seq": 24, "src": "01-info-run2.log:24", "fmt": "stcgal_debug"}
+{"phase": "sync", "dir": "mcu->host", "bytes_hex": "25", "note": "not-a-frame; noise", "seq": 25, "src": "01-info-run2.log:25", "fmt": "stcgal_debug"}
+{"phase": "sync", "dir": "mcu->host", "bytes_hex": "91", "note": "not-a-frame; noise", "seq": 26, "src": "01-info-run2.log:26", "fmt": "stcgal_debug"}
+{"phase": "sync", "dir": "mcu->host", "bytes_hex": "01", "note": "not-a-frame; noise", "seq": 27, "src": "01-info-run2.log:27", "fmt": "stcgal_debug"}
+{"phase": "sync", "dir": "mcu->host", "bytes_hex": "04", "note": "not-a-frame; noise", "seq": 28, "src": "01-info-run2.log:28", "fmt": "stcgal_debug"}
+{"phase": "sync", "dir": "mcu->host", "bytes_hex": "fc", "note": "not-a-frame; noise", "seq": 29, "src": "01-info-run2.log:29", "fmt": "stcgal_debug"}
+{"phase": "sync", "dir": "mcu->host", "bytes_hex": "45", "note": "not-a-frame; noise", "seq": 30, "src": "01-info-run2.log:30", "fmt": "stcgal_debug"}
+{"phase": "sync", "dir": "mcu->host", "bytes_hex": "31", "note": "not-a-frame; noise", "seq": 31, "src": "01-info-run2.log:31", "fmt": "stcgal_debug"}
+{"phase": "sync", "dir": "mcu->host", "bytes_hex": "20", "note": "not-a-frame; noise", "seq": 32, "src": "01-info-run2.log:32", "fmt": "stcgal_debug"}
+{"phase": "sync", "dir": "mcu->host", "bytes_hex": "21", "note": "not-a-frame; noise", "seq": 33, "src": "01-info-run2.log:33", "fmt": "stcgal_debug"}
+{"phase": "sync", "dir": "mcu->host", "bytes_hex": "25", "note": "not-a-frame; noise", "seq": 34, "src": "01-info-run2.log:34", "fmt": "stcgal_debug"}
+{"phase": "sync", "dir": "mcu->host", "bytes_hex": "25", "note": "not-a-frame; noise", "seq": 35, "src": "01-info-run2.log:35", "fmt": "stcgal_debug"}
+{"phase": "sync", "dir": "mcu->host", "bytes_hex": "91", "note": "not-a-frame; noise", "seq": 36, "src": "01-info-run2.log:36", "fmt": "stcgal_debug"}
+{"phase": "sync", "dir": "mcu->host", "bytes_hex": "91", "note": "not-a-frame; noise", "seq": 37, "src": "01-info-run2.log:37", "fmt": "stcgal_debug"}
+{"phase": "sync", "dir": "mcu->host", "bytes_hex": "80", "note": "not-a-frame; noise", "seq": 38, "src": "01-info-run2.log:38", "fmt": "stcgal_debug"}
+{"phase": "sync", "dir": "mcu->host", "bytes_hex": "00", "note": "not-a-frame; noise", "seq": 39, "src": "01-info-run2.log:39", "fmt": "stcgal_debug"}
+{"phase": "status", "dir": "mcu->host", "bytes_hex": "46 b9 68 00 3a 00 0a 6b 0a 6b 0a 6b 0a 6b 0a 6b 0a 6b 0a 6b 0a 6b 66 43 fd f0 02 82 ef f6 8e f2 ee f1 ca ec 72 1b f3 df fe 8c ed f6 ee e7 ee fb 6a c4 9d 57 df 7f de fd ee 04 35 16", "note": "frame-ok", "seq": 40, "src": "01-info-run2.log:40", "fmt": "stcgal_debug", "cmd": "0x00"}
+{"phase": "run", "dir": "host->mcu", "bytes_hex": "46 b9 6a 00 06 82 f2 16", "note": "frame-ok", "seq": 41, "src": "01-info-run2.log:41", "fmt": "stcgal_debug", "cmd": "0x82"}

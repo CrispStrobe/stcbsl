@@ -52,7 +52,16 @@ pub fn repo_root() -> PathBuf {
 }
 
 pub fn fixture_path(name: &str) -> PathBuf {
-    repo_root().join(CAPTURE_DIR).join("frames").join(format!("{name}.jsonl"))
+    // Monorepo layout first (the lab's docs/isp-captures is the source of
+    // truth); standalone checkouts and the packaged crate carry a vendored
+    // copy under tests/fixtures/frames.
+    let mono = repo_root().join(CAPTURE_DIR).join("frames").join(format!("{name}.jsonl"));
+    if mono.exists() {
+        return mono;
+    }
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/frames")
+        .join(format!("{name}.jsonl"))
 }
 
 pub fn load(name: &str) -> Vec<Record> {

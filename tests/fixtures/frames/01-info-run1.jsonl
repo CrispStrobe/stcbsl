@@ -1,0 +1,2 @@
+{"phase": "status", "dir": "mcu->host", "bytes_hex": "46 b9 68 00 3a 00 0a 6b 0a 6b 0a 6b 0a 6b 0a 6b 0a 6b 0a 6b 0a 6b 66 43 fd f0 02 82 ef f6 ae f3 ee f1 ca cc 70 1b f3 df fe 8c ed f6 ee e7 ee fb 6a cc 9d 57 df 7f de fd ee 04 3c 16", "note": "frame-ok; text=Waiting for MCU, please cycle power:", "seq": 1, "src": "01-info-run1.log:1", "fmt": "stcgal_debug", "cmd": "0x00"}
+{"phase": "run", "dir": "host->mcu", "bytes_hex": "46 b9 6a 00 06 82 f2 16", "note": "frame-ok", "seq": 2, "src": "01-info-run1.log:2", "fmt": "stcgal_debug", "cmd": "0x82"}

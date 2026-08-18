@@ -1,0 +1,17 @@
+{"phase": "sync", "dir": "mcu->host", "bytes_hex": "00", "note": "not-a-frame; noise; text=Waiting for MCU, please cycle power:", "seq": 1, "src": "02-erase-run2.log:1", "fmt": "stcgal_debug"}
+{"phase": "status", "dir": "mcu->host", "bytes_hex": "46 b9 68 00 3a 00 0a 79 0a 79 0a 79 0a 79 0a 79 0a 79 0a 79 0a 79 66 43 fd f0 02 82 ef d6 ae f2 ee f1 ca ec 72 1b f3 df fe 8c ed f6 ee e7 ee fb 6a c4 9d 57 df 7f de fd ee 04 a5 16", "note": "frame-ok", "seq": 2, "src": "02-erase-run2.log:2", "fmt": "stcgal_debug", "cmd": "0x00"}
+{"phase": "baud_probe", "dir": "host->mcu", "bytes_hex": "46 b9 6a 00 0c 8f ff fd 00 06 a0 81 28 16", "note": "frame-ok; text=Switching to 115200 baud: checking", "seq": 3, "src": "02-erase-run2.log:19", "fmt": "stcgal_debug", "cmd": "0x8f"}
+{"phase": "baud_probe", "dir": "mcu->host", "bytes_hex": "46 b9 68 00 0c 8f ff fd 00 06 a0 81 26 16", "note": "frame-ok", "seq": 4, "src": "02-erase-run2.log:20", "fmt": "stcgal_debug", "cmd": "0x8f"}
+{"phase": "baud_commit", "dir": "host->mcu", "bytes_hex": "46 b9 6a 00 0b 8e ff fd 00 06 a0 a5 16", "note": "frame-ok; text=setting", "seq": 5, "src": "02-erase-run2.log:21", "fmt": "stcgal_debug", "cmd": "0x8e"}
+{"phase": "baud_commit", "dir": "mcu->host", "bytes_hex": "46 b9 68 00 0b 8e ff fd 00 06 a0 a3 16", "note": "frame-ok", "seq": 6, "src": "02-erase-run2.log:22", "fmt": "stcgal_debug", "cmd": "0x8e"}
+{"phase": "link_test", "dir": "host->mcu", "bytes_hex": "46 b9 6a 00 0c 80 00 00 36 01 f0 02 1f 16", "note": "frame-ok; text=testing", "seq": 7, "src": "02-erase-run2.log:23", "fmt": "stcgal_debug", "cmd": "0x80"}
+{"phase": "link_test", "dir": "mcu->host", "bytes_hex": "46 b9 68 00 06 80 ee 16", "note": "frame-ok", "seq": 8, "src": "02-erase-run2.log:24", "fmt": "stcgal_debug", "cmd": "0x80"}
+{"phase": "link_test", "dir": "host->mcu", "bytes_hex": "46 b9 6a 00 0c 80 00 00 36 01 f0 02 1f 16", "note": "frame-ok", "seq": 9, "src": "02-erase-run2.log:25", "fmt": "stcgal_debug", "cmd": "0x80"}
+{"phase": "link_test", "dir": "mcu->host", "bytes_hex": "46 b9 68 00 06 80 ee 16", "note": "frame-ok", "seq": 10, "src": "02-erase-run2.log:26", "fmt": "stcgal_debug", "cmd": "0x80"}
+{"phase": "link_test", "dir": "host->mcu", "bytes_hex": "46 b9 6a 00 0c 80 00 00 36 01 f0 02 1f 16", "note": "frame-ok", "seq": 11, "src": "02-erase-run2.log:27", "fmt": "stcgal_debug", "cmd": "0x80"}
+{"phase": "link_test", "dir": "mcu->host", "bytes_hex": "46 b9 68 00 06 80 ee 16", "note": "frame-ok", "seq": 12, "src": "02-erase-run2.log:28", "fmt": "stcgal_debug", "cmd": "0x80"}
+{"phase": "link_test", "dir": "host->mcu", "bytes_hex": "46 b9 6a 00 0c 80 00 00 36 01 f0 02 1f 16", "note": "frame-ok", "seq": 13, "src": "02-erase-run2.log:29", "fmt": "stcgal_debug", "cmd": "0x80"}
+{"phase": "link_test", "dir": "mcu->host", "bytes_hex": "46 b9 68 00 06 80 ee 16", "note": "frame-ok", "seq": 14, "src": "02-erase-run2.log:30", "fmt": "stcgal_debug", "cmd": "0x80"}
+{"phase": "erase", "dir": "host->mcu", "bytes_hex": "46 b9 6a 00 0d 84 20 33 33 33 33 33 33 4d 16", "note": "frame-ok; text=Erasing 32 blocks:", "seq": 15, "src": "02-erase-run2.log:32", "fmt": "stcgal_debug", "cmd": "0x84"}
+{"phase": "erase", "dir": "mcu->host", "bytes_hex": "46 b9 68 00 0d 80 f0 02 c4 2b 01 83 74 ce 16", "note": "frame-ok", "seq": 16, "src": "02-erase-run2.log:33", "fmt": "stcgal_debug", "cmd": "0x80"}
+{"phase": "run", "dir": "host->mcu", "bytes_hex": "46 b9 6a 00 06 82 f2 16", "note": "frame-ok", "seq": 17, "src": "02-erase-run2.log:34", "fmt": "stcgal_debug", "cmd": "0x82"}
