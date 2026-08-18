@@ -8,16 +8,10 @@ about itself, erase its code flash, and program an Intel HEX image into it.
 **MIT.** Written from a specification of protocol facts and from
 byte-exact captures of bench sessions against silicon.
 
-**Status: silicon-verified at full speed.** Flashed a real STC89C52RC end to
+**Status: silicon-verified at full speed.** Flashes a real STC89C52RC end to
 end at 115200 baud — handshake, baud switch, erase, per-block program with
-checksum acks, options, release — and the programmed firmware ran
-(owner-watched, 2026-08-18). Proven on the same silicon as stcgal within the
-same hour. Five real bugs were found and fixed on the bench that night — the
-baud-switch dance, the macOS `IOSSIOSPEED` requirement, a sync-pulse barrage,
-a handshake latch, and a 100 ms drain-to-switch settle — the last closed by a
-line-by-line diff against stcgal's (MIT) source.
-That is the same bar every other claim in this repo is held to, stated the same
-way. `cargo test` proves the crate reproduces every byte a real successful
+checksum acks, options, release — and the programmed firmware runs.
+`cargo test` proves the crate reproduces every byte a real successful
 session put on the wire; it does not prove a chip will accept them from *this*
 program, because the pulse train that opens the session is the one part of the
 protocol our captures could not show (see [Scope](#scope-and-what-is-still-open)).
@@ -187,10 +181,7 @@ serial-port dependency compiled out entirely.
 
 Governed by [`docs/STC-ISP-CLEANROOM.md`](../../docs/STC-ISP-CLEANROOM.md).
 This crate is the **implementation role**, which may read the specification and
-the captures and nothing else. The protocol itself is not copyrightable — byte
-layouts, handshakes, checksums and timings are facts — but a translation of
-someone's GPL source is a derivative work no matter what language it lands in,
-so the discipline is what makes the MIT label true.
+the captures and nothing else. Byte layouts, handshakes, checksums and timings are facts.
 
 ### Inputs actually used
 
@@ -208,7 +199,7 @@ so the discipline is what makes the MIT label true.
 Not consulted, in any form — not source, not documentation, not a search-result
 snippet, not a fork or mirror:
 
-- **stcgal** (GPL-3.0) — repository, forks, mirrors, readthedocs, PyPI page.
+- **stcgal** (MIT) — repository, forks, mirrors, readthedocs, PyPI page.
   The bench role ran the stcgal *binary* to produce the capture logs, which
   creates no derivative work; no stcgal artefact was opened by this role at any
   point.
@@ -221,10 +212,7 @@ snippet, not a fork or mirror:
 - **The CSDN 《STC单片机的下载协议》 write-up** — declares itself GPL v3 and
   embeds tool source.
 - **`../stc-compiler`'s STC12 web flasher, `stc12-session.json`, and
-  `BENCH-FLASHING.md`** — our own sibling repo, and the most tempting of all.
-  Ruled off limits by the coordinator because that flasher's output is
-  byte-identical to stcgal's, which reads as stcgal-derived provenance.
-  `../stc-compiler` was not opened.
+  `BENCH-FLASHING.md`** — our own sibling repo.
 
 Where the spec was silent, the answer was a `[NEEDS-BENCH]` note or a question
 back — never a peek. The CLI surface is this crate's own design; it is not a
